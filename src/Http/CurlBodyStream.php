@@ -100,7 +100,8 @@ final class CurlBodyStream implements StreamInterface
         try {
             $data = $this->transfer->read(max(1, $length));
         } catch (NetworkException $e) {
-            throw new \RuntimeException('the answer broke off: '.$e->getMessage(), 0, $e);
+            // A NetworkException (a \RuntimeException) that says the answer had begun, and why it ended.
+            throw new NetworkException($e->getRequest(), 'the answer broke off: '.$e->getMessage(), $e->timedOut, false, $e, true, $e->limit);
         }
         $this->position += \strlen($data);
 

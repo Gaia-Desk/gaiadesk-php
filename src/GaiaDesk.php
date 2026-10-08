@@ -52,7 +52,11 @@ final class GaiaDesk
     use Concerns\Tokens;
 
     /** This SDK's version. */
-    public const VERSION = '0.1.0';
+    public const VERSION = '0.1.1';
+    /** The default {@see __construct()} `responseTimeout`: 16 minutes, above the API's 15-minute limit on a call. */
+    public const DEFAULT_RESPONSE_TIMEOUT = 960.0;
+    /** The default {@see __construct()} `idleTimeout`: the API's streams and held waits send a keep-alive every 15 s. */
+    public const DEFAULT_IDLE_TIMEOUT = 90.0;
     public const DEFAULT_API_URL = 'https://api.gaiadesk.net/v1';
     /** The most one file may be through the API (256 MB). */
     public const API_FILE_LIMIT = 268435456;
@@ -82,6 +86,10 @@ final class GaiaDesk
      * @param int                          $maxRetries      how many times a request that is safe to retry is retried (429s as Retry-After says; a GET on a network error, 502 or 504)
      * @param array<string, string>|null   $env             `local`: the environment the defaults are read from (default: this process's)
      * @param callable(float): void|null   $sleep           how to wait between retries (default: usleep; for tests)
+     * @param float|null                   $responseTimeout seconds an answer may take to begin (its status and headers), sending the request
+     *                                                      included (default 16 minutes; null: no limit). Exceeded: UnreachableException, kind `timeout`
+     * @param float|null                   $idleTimeout     seconds any read of an answer's body (JSON, a download, an event stream) may wait for a
+     *                                                      byte (default 90; null: no limit). Exceeded: ConnectionLostException, kind `timeout`
      */
     public function __construct(
         ?string $apiKey = null,
@@ -102,8 +110,12 @@ final class GaiaDesk
         int $maxRetries = 2,
         ?array $env = null,
         ?callable $sleep = null,
+        ?float $responseTimeout = self::DEFAULT_RESPONSE_TIMEOUT,
+        ?float $idleTimeout = self::DEFAULT_IDLE_TIMEOUT,
     ) {
         $factory = new Psr17Factory();
+        $responseTimeout = Args::timeLimit($responseTimeout, 'responseTimeout');
+        $idleTimeout = Args::timeLimit($idleTimeout, 'idleTimeout');
         $requests = $requestFactory ?? $factory;
         $streams = $streamFactory ?? $factory;
         $deskToken = Args::credential($deskToken, 'deskToken (a scoped agent token, gdagt_…)');
@@ -139,7 +151,7 @@ final class GaiaDesk
                 /** @var ApiTransport $t */
                 return $t->json(new Call($method, $path, json: $r['json'] ?? null, deskToken: $r['deskToken'] ?? null, timeout: 120.0, retry: false));
             }, $url, $onWarning);
-            $t = new ApiTransport('api', $url, "the GaiaDesk API ($url)", $httpClient ?? new CurlClient(), ...$common, credentials: $credentials, e2e: $layer, maxRetries: $maxRetries, connectTimeout: $connectTimeout, timeout: $timeout, sleep: $sleep);
+            $t = new ApiTransport('api', $url, "the GaiaDesk API ($url)", $httpClient ?? new CurlClient(), ...$common, credentials: $credentials, e2e: $layer, maxRetries: $maxRetries, connectTimeout: $connectTimeout, timeout: $timeout, sleep: $sleep, responseTimeout: $responseTimeout, idleTimeout: $idleTimeout);
             $this->t = $t;
 
             return;
@@ -171,7 +183,7 @@ final class GaiaDesk
 
                 return ['Authorization' => 'Bearer '.($adminToken ?? Local::adminToken($tokenFile))];
             };
-            $this->t = new ApiTransport('local', 'http://localhost/v1', "the desk's local API ($where)", Local::client($where, $windows), ...$common, credentials: $credentials, maxRetries: $maxRetries, connectTimeout: $connectTimeout, timeout: $timeout, sleep: $sleep);
+            $this->t = new ApiTransport('local', 'http://localhost/v1', "the desk's local API ($where)", Local::client($where, $windows), ...$common, credentials: $credentials, maxRetries: $maxRetries, connectTimeout: $connectTimeout, timeout: $timeout, sleep: $sleep, responseTimeout: $responseTimeout, idleTimeout: $idleTimeout);
 
             return;
         }
@@ -196,7 +208,7 @@ final class GaiaDesk
 
                 return ['X-GaiaDesk-Desk-Token' => $t];
             };
-            $this->t = new ApiTransport('lan', $url, "the desk's LAN gateway ($origin)", Lan::client($url, $pinned), ...$common, credentials: $credentials, maxRetries: $maxRetries, connectTimeout: $connectTimeout, timeout: $timeout, sleep: $sleep);
+            $this->t = new ApiTransport('lan', $url, "the desk's LAN gateway ($origin)", Lan::client($url, $pinned), ...$common, credentials: $credentials, maxRetries: $maxRetries, connectTimeout: $connectTimeout, timeout: $timeout, sleep: $sleep, responseTimeout: $responseTimeout, idleTimeout: $idleTimeout);
 
             return;
         }
@@ -212,9 +224,9 @@ final class GaiaDesk
      * @param string|null                $deskToken  an agent token (`gdagt_…`), sent instead of the admin token: its scopes apply
      * @param array<string, string>|null $env
      */
-    public static function local(?string $socketPath = null, ?string $token = null, ?string $deskToken = null, ?array $env = null, int $maxRetries = 2, ?float $timeout = null): self
+    public static function local(?string $socketPath = null, ?string $token = null, ?string $deskToken = null, ?array $env = null, int $maxRetries = 2, ?float $timeout = null, ?float $responseTimeout = self::DEFAULT_RESPONSE_TIMEOUT, ?float $idleTimeout = self::DEFAULT_IDLE_TIMEOUT): self
     {
-        return new self(deskToken: $deskToken, transport: 'local', socketPath: $socketPath, token: $token, env: $env, maxRetries: $maxRetries, timeout: $timeout);
+        return new self(deskToken: $deskToken, transport: 'local', socketPath: $socketPath, token: $token, env: $env, maxRetries: $maxRetries, timeout: $timeout, responseTimeout: $responseTimeout, idleTimeout: $idleTimeout);
     }
 
     /**
@@ -224,9 +236,9 @@ final class GaiaDesk
      * @param string      $fingerprint the certificate's SHA-256, as the desk's Settings show it (`ab:cd:…`)
      * @param string|null $deskToken   the agent token (`gdagt_…`); required here or on each call
      */
-    public static function lan(string $baseUrl, string $fingerprint, ?string $deskToken = null, int $maxRetries = 2, ?float $timeout = null, float $connectTimeout = 10.0): self
+    public static function lan(string $baseUrl, string $fingerprint, ?string $deskToken = null, int $maxRetries = 2, ?float $timeout = null, float $connectTimeout = 10.0, ?float $responseTimeout = self::DEFAULT_RESPONSE_TIMEOUT, ?float $idleTimeout = self::DEFAULT_IDLE_TIMEOUT): self
     {
-        return new self(deskToken: $deskToken, baseUrl: $baseUrl, transport: 'lan', fingerprint: $fingerprint, maxRetries: $maxRetries, timeout: $timeout, connectTimeout: $connectTimeout);
+        return new self(deskToken: $deskToken, baseUrl: $baseUrl, transport: 'lan', fingerprint: $fingerprint, maxRetries: $maxRetries, timeout: $timeout, connectTimeout: $connectTimeout, responseTimeout: $responseTimeout, idleTimeout: $idleTimeout);
     }
 
     /** Which transport this client uses: `api`, `local` or `lan`. */

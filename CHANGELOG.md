@@ -2,7 +2,40 @@
 
 All notable changes to this package. It follows [Semantic Versioning](https://semver.org).
 
-## 0.1.0 (unreleased)
+## 0.1.1
+
+Never hang on a dropped or stalled connection.
+
+- **Timeouts**: `responseTimeout` (default 16 minutes, above the API's 15-minute call limit)
+  bounds the wait for an answer to begin, sending the request included; `idleTimeout` (default
+  90 s; streams and held waits keep alive every 15 s) bounds every read of its body (JSON, error
+  bodies, downloads plain and sealed, event streams). Both on `new GaiaDesk(...)`,
+  `GaiaDesk::local()` and `GaiaDesk::lan()`, in seconds, `null` for no limit. Exceeded:
+  `UnreachableException` / `ConnectionLostException`, kind `timeout`, the message naming the
+  limit; a stream ends with `connection_lost`, reason `timeout`, exit 255. Neither is retried.
+- Before: a server that stopped reading an upload held the LAN and named-pipe client forever (a
+  blocking write); a silent server or a stalled body was only cut off by curl's 120-second
+  low-speed limit or an operation's total limit (up to 17 minutes for `exec`), and then as an
+  `UnreachableException` even when the answer had begun (one that broke off was even retried as a
+  GET); the stream client also took a silent answer for a closed connection. The curl
+  client now keeps both limits in the loop that drives it (not `CURLOPT_LOW_SPEED_*`, which also
+  ran while the answer was awaited), the stream client writes without blocking.
+- An answer that breaks off after it began is a `ConnectionLostException` (`incomplete`), never
+  retried; a stream that breaks off ends with `connection_lost`. The last event before a stream
+  broke off is no longer lost.
+- Requests other than GET and HEAD always go on a fresh, never-reused curl connection, so libcurl
+  cannot silently re-send one (it does, body and all, on a reused connection that was closed
+  before any answer), even with a shared connection cache passed in `curlOptions`.
+- A request's curl connection now closes as soon as the request ends. Since PHP 8,
+  `curl_multi_close()` does nothing, and the transfer's callbacks kept its handles in a cycle only
+  the garbage collector broke: failed requests left their sockets open (about four descriptors
+  each) until a collection ran.
+- A plain PSR-18 client's body that is a PHP stream is read under `idleTimeout`.
+- Tests: a raw TCP server (no HTTP framework) that closes or resets before any response byte
+  (with and without reading the body), stalls mid-body, mid-JSON and mid-stream, or never
+  answers; a 300-request stress run; and the libcurl re-send pinned.
+
+## 0.1.0
 
 The first release: the GaiaDesk /v1 API from PHP, at parity with the TypeScript SDK's API
 transport, and covering the API routes that SDK leaves out.

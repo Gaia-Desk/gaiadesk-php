@@ -110,7 +110,7 @@ trait Jobs
         while (true) {
             $left = null === $total ? GaiaDesk::API_WAIT_MAX : max(0.0, $total - (microtime(true) - $started));
             $t = (int) min(GaiaDesk::API_WAIT_MAX, ceil($left));
-            $json = $this->t->json(new Call('GET', $path, query: ['timeout' => $t], deskToken: $deskToken, wake: $wake, e2e: ['desk' => $desk, 'op' => 'job_wait', 'request' => ['op' => 'job_wait', 'name' => $name, 'timeout_ms' => $t * 1000]], timeout: $t + self::idleFor($wake), idleTimeout: self::idleFor($wake)));
+            $json = $this->t->json(new Call('GET', $path, query: ['timeout' => $t], deskToken: $deskToken, wake: $wake, e2e: ['desk' => $desk, 'op' => 'job_wait', 'request' => ['op' => 'job_wait', 'name' => $name, 'timeout_ms' => $t * 1000]], timeout: $t + self::idleFor($wake)));
             $env = Errors::envelope($json);
             if (null !== $env) {
                 // A held wait that failed after its 200 began: the envelope, in the body.
@@ -195,7 +195,7 @@ trait Jobs
         }
         $request['follow'] = true;
         $path = $this->deskPath($deskId).'/jobs/'.rawurlencode($name).'/logs';
-        $c = new Call('GET', $path, query: ['follow' => 1, 'tail' => $tail], accept: 'text/event-stream', deskToken: $deskToken, wake: $wake, e2e: ['desk' => Args::desk($deskId), 'op' => 'job_logs', 'request' => $request], idleTimeout: self::idleFor($wake), stream: true);
+        $c = new Call('GET', $path, query: ['follow' => 1, 'tail' => $tail], accept: 'text/event-stream', deskToken: $deskToken, wake: $wake, e2e: ['desk' => Args::desk($deskId), 'op' => 'job_logs', 'request' => $request], stream: true);
 
         return new OutputStream("GET $path", 'logs', fn (): array => $this->t->events($c, 'logs'), $name);
     }

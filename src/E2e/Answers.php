@@ -178,6 +178,8 @@ final class Answers
                 }
                 try {
                     $buf .= $body->read(65536);
+                } catch (GaiaDeskException $e) {
+                    throw $e; // the answer stalled or broke off: the SDK's own error says which
                 } catch (\RuntimeException) {
                     break; // the transfer broke: the download is incomplete
                 }

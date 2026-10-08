@@ -31,7 +31,6 @@ final class Call
         public readonly ?string $idempotencyKey = null,
         public readonly ?array $e2e = null,
         public readonly ?float $timeout = null,
-        public readonly ?float $idleTimeout = null,
         public readonly bool $stream = false,
         public readonly bool $retry = true,
     ) {

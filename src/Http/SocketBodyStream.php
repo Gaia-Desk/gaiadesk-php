@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace GaiaDesk\Http;
 
+use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\StreamInterface;
 
 /**
  * An HTTP/1.1 response body read from its connection as it arrives: by
  * `Content-Length`, `Transfer-Encoding: chunked`, or until the connection closes.
- * Closing it closes the connection.
+ * Closing it closes the connection. Every read waits at most `idleTimeout` for a byte;
+ * an answer that stalls or breaks off is a {@see NetworkException} (`answerBegun`).
  *
  * @internal
  */
@@ -23,7 +25,7 @@ final class SocketBodyStream implements StreamInterface
     /**
      * @param resource|null $conn
      */
-    public function __construct(private $conn, private string $pending, private readonly bool $chunked, ?int $length, private readonly ?float $idleTimeout)
+    public function __construct(private $conn, private string $pending, private readonly bool $chunked, ?int $length, private readonly ?float $idleTimeout, private readonly RequestInterface $request)
     {
         $this->left = $chunked ? 0 : $length;
         if (!$chunked && 0 === $length) {
@@ -111,7 +113,12 @@ final class SocketBodyStream implements StreamInterface
         if (!\is_resource($this->conn)) {
             return false;
         }
-        $data = SocketClient::readSome($this->conn, 65536, $this->idleTimeout);
+        try {
+            $data = SocketClient::readSome($this->conn, 65536, $this->idleTimeout);
+        } catch (ReadTimedOut) {
+            $this->close(); // abandoned: the answer stalled
+            throw new NetworkException($this->request, 'nothing arrived within the idle timeout', true, false, null, true, 'idleTimeout');
+        }
         if (null === $data) {
             return false;
         }
@@ -125,7 +132,7 @@ final class SocketBodyStream implements StreamInterface
     {
         while (false === ($i = strpos($this->pending, "\n"))) {
             if (!$this->fill()) {
-                throw new \RuntimeException('the answer broke off (a chunked body ended early)');
+                throw $this->broke('the answer broke off (a chunked body ended early)');
             }
         }
         $line = rtrim(substr($this->pending, 0, $i), "\r");
@@ -143,7 +150,7 @@ final class SocketBodyStream implements StreamInterface
         if ($this->chunked && 0 === $this->left) {
             $size = hexdec(trim(explode(';', $this->line(), 2)[0]));
             if (!\is_int($size) || $size < 0) {
-                throw new \RuntimeException('the answer is not valid chunked encoding');
+                throw $this->broke('the answer is not valid chunked encoding');
             }
             if (0 === $size) {
                 // Trailers, then the blank line.
@@ -163,7 +170,7 @@ final class SocketBodyStream implements StreamInterface
 
                 return '';
             }
-            throw new \RuntimeException('the answer broke off before its end');
+            throw $this->broke('the answer broke off before its end');
         }
         $n = null === $this->left ? $length : min($length, $this->left);
         $out = substr($this->pending, 0, $n);
@@ -180,6 +187,13 @@ final class SocketBodyStream implements StreamInterface
         }
 
         return $out;
+    }
+
+    private function broke(string $why): NetworkException
+    {
+        $this->close();
+
+        return new NetworkException($this->request, $why, false, false, null, true);
     }
 
     public function getContents(): string

@@ -153,12 +153,12 @@ final class DeskOperationsTest extends ApiTestCase
         $lost = self::drain($gd->execStream(self::OK, 'lose'));
         self::assertSame("ran: lose é\n", $lost['out']);
         self::assertSame(['connection_lost', 255], [$lost['exit']->error['kind'] ?? null, $lost['exit']->exitCode]);
-        // A stream that breaks off.
+        // A stream that breaks off after it began: the connection was lost.
         $this->http->failNext = 0;
         $s = $gd->execStream(self::OK, 'slow');
         $this->http->bodies[\count($this->http->bodies) - 1]->breakAfter = 4;
         $exit = $s->wait();
-        self::assertSame([255, 'unreachable'], [$exit->exitCode, $exit->error['kind'] ?? null]);
+        self::assertSame([255, 'connection_lost', 'incomplete'], [$exit->exitCode, $exit->error['kind'] ?? null, $exit->error['reason'] ?? null]);
         // No connection at all.
         $this->http->failNext = 1;
         $exit = $gd->execStream(self::OK, 'x')->wait();

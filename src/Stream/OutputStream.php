@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GaiaDesk\Stream;
 
+use GaiaDesk\Exception\ConnectionLostException;
 use GaiaDesk\Exception\GaiaDeskException;
 use GaiaDesk\Exception\UnreachableException;
 use GaiaDesk\Exception\UsageException;
@@ -40,6 +41,8 @@ final class OutputStream implements \IteratorAggregate
     private ?array $last = null;
     private bool $started = false;
     private bool $cancelled = false;
+    /** The event last handed out was used: move past it before the next (not before, so a read that fails cannot lose it). */
+    private bool $advance = false;
 
     /**
      * @param 'exec'|'logs'                                                                                $kind
@@ -157,12 +160,15 @@ final class OutputStream implements \IteratorAggregate
     {
         while (null === $this->exit && null !== $this->events) {
             try {
+                if ($this->advance) {
+                    $this->events->next();
+                }
+                $this->advance = true;
                 if (!$this->events->valid()) {
                     $this->finish();
                     break;
                 }
                 $ev = $this->events->current();
-                $this->events->next();
             } catch (GaiaDeskException $e) {
                 $this->closeBody();
                 $this->exit = $this->cancelled ? new StreamExit(130, 'interrupted') : self::exitForError($e);
@@ -277,7 +283,14 @@ final class OutputStream implements \IteratorAggregate
                 $error['desk'] = $env['desk'];
             }
         } else {
-            $error = ['kind' => 'network' === $e->getKind() ? 'unreachable' : $e->getKind(), 'message' => $e->getMessage()];
+            // One of the error kinds: a transport error by its class (a stalled stream is connection_lost, reason timeout).
+            $kind = match (true) {
+                $e instanceof ConnectionLostException => 'connection_lost',
+                $e instanceof UnreachableException => 'unreachable',
+                'network' === $e->getKind() => 'unreachable',
+                default => $e->getKind(),
+            };
+            $error = ['kind' => $kind, 'message' => $e->getMessage()];
             if (null !== $e->getReason()) {
                 $error['reason'] = $e->getReason();
             }

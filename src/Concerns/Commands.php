@@ -151,7 +151,7 @@ trait Commands
         $spec = self::execSpec($command, $shell, $timeout, $cwd, $stdin, $env, $admin);
         $desk = Args::desk($deskId);
         $path = $this->deskPath($deskId).'/exec';
-        $c = new Call('POST', $path, query: ['stream' => 1], json: $spec, accept: 'text/event-stream', deskToken: $deskToken, wake: $wake, e2e: ['desk' => $desk, 'op' => 'exec', 'request' => ['op' => 'exec', 'spec' => $spec, 'stream' => true]], idleTimeout: self::idleFor($wake), stream: true);
+        $c = new Call('POST', $path, query: ['stream' => 1], json: $spec, accept: 'text/event-stream', deskToken: $deskToken, wake: $wake, e2e: ['desk' => $desk, 'op' => 'exec', 'request' => ['op' => 'exec', 'spec' => $spec, 'stream' => true]], stream: true);
 
         return new OutputStream("POST $path", 'exec', fn (): array => $this->t->events($c, 'exec'));
     }

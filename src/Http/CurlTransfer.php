@@ -10,6 +10,16 @@ use Psr\Http\Message\RequestInterface;
  * One request on a curl multi handle, driven by whoever needs its next bytes: the
  * client until the status and headers are in, then (streaming) the body as it is read.
  *
+ * The time limits are kept here, in the loop that drives curl, so it is known which one
+ * ran out: the answer must begin within `responseTimeout` (sending the request
+ * included), and every wait for more of its body ends after `idleTimeout` without a
+ * byte. A transfer that runs out of either is abandoned: its connection is closed.
+ *
+ * Each request has its own multi handle, so its own connection: libcurl re-sends a
+ * request (any method, its body rewound) when a connection it REUSED closes before any
+ * answer, and that never applies here. Anything but GET and HEAD also forces a fresh,
+ * never-reused connection, even when the caller's options share a connection cache.
+ *
  * @internal
  */
 final class CurlTransfer
@@ -31,6 +41,11 @@ final class CurlTransfer
     private string $buffer = '';
     /** @var resource|null */
     private $sink;
+    /** When the answer must have begun by (microtime), or null. */
+    private ?float $responseBy = null;
+    private ?float $idle = null;
+    /** When the last byte of the body arrived (microtime). */
+    private float $lastByte;
 
     /**
      * @param array<int, mixed> $curlOptions
@@ -73,10 +88,15 @@ final class CurlTransfer
         if (null !== $options->timeout && $options->timeout > 0) {
             $opts[\CURLOPT_TIMEOUT_MS] = (int) ceil($options->timeout * 1000);
         }
+        // Not CURLOPT_LOW_SPEED_*: whole seconds, applied while the request is sent and while the
+        // answer is awaited too, and it cannot say which limit ran out. The loop below keeps both.
         if (null !== $options->idleTimeout && $options->idleTimeout > 0) {
-            $opts[\CURLOPT_LOW_SPEED_LIMIT] = 1;
-            $opts[\CURLOPT_LOW_SPEED_TIME] = (int) ceil($options->idleTimeout);
+            $this->idle = $options->idleTimeout;
         }
+        if (null !== $options->responseTimeout && $options->responseTimeout > 0) {
+            $this->responseBy = microtime(true) + $options->responseTimeout;
+        }
+        $this->lastByte = microtime(true);
         if (null !== $unixSocket) {
             $opts[\CURLOPT_UNIX_SOCKET_PATH] = $unixSocket;
         }
@@ -103,6 +123,13 @@ final class CurlTransfer
         }
         foreach ($curlOptions as $k => $v) {
             $opts[$k] = $v;
+        }
+        $method = strtoupper($request->getMethod());
+        if ('GET' !== $method && 'HEAD' !== $method) {
+            // Never on a reused connection, never left for reuse: libcurl would re-send it, body and all,
+            // if that connection turned out to be closed before any answer.
+            $opts[\CURLOPT_FRESH_CONNECT] = true;
+            $opts[\CURLOPT_FORBID_REUSE] = true;
         }
         if (!curl_setopt_array($ch, $opts)) {
             throw new NetworkException($request, 'curl refused the request options');
@@ -151,6 +178,7 @@ final class CurlTransfer
             return 0; // abort the transfer
         }
         $this->headersDone = true;
+        $this->lastByte = microtime(true);
         if (null !== $this->sink) {
             fwrite($this->sink, $data);
         } else {
@@ -186,11 +214,42 @@ final class CurlTransfer
     public function awaitHeaders(): void
     {
         while (!$this->headersDone && !$this->done) {
-            $this->drive(1.0);
+            $this->drive($this->untilResponseLimit());
         }
         if (!$this->headersDone || $this->status < 100) {
             throw $this->failure();
         }
+        $this->lastByte = microtime(true);
+    }
+
+    /** How long to wait for the network now, before the answer began: throws once responseTimeout ran out. */
+    private function untilResponseLimit(): float
+    {
+        if (null === $this->responseBy) {
+            return 1.0;
+        }
+        $left = $this->responseBy - microtime(true);
+        if ($left <= 0) {
+            $this->close();
+            throw new NetworkException($this->request, 'no answer within the response timeout', true, false, null, false, 'responseTimeout');
+        }
+
+        return min(1.0, max(0.001, $left));
+    }
+
+    /** How long to wait for the network now, within the body: throws once idleTimeout passed without a byte. */
+    private function untilIdleLimit(): float
+    {
+        if (null === $this->idle) {
+            return 1.0;
+        }
+        $left = $this->lastByte + $this->idle - microtime(true);
+        if ($left <= 0) {
+            $this->close();
+            throw new NetworkException($this->request, 'nothing arrived within the idle timeout', true, false, null, true, 'idleTimeout');
+        }
+
+        return min(1.0, max(0.001, $left));
     }
 
     /**
@@ -201,7 +260,7 @@ final class CurlTransfer
     public function awaitAll()
     {
         while (!$this->done) {
-            $this->drive(1.0);
+            $this->drive($this->untilIdleLimit());
         }
         if (\CURLE_OK !== $this->result || null === $this->sink) {
             throw $this->failure();
@@ -221,7 +280,7 @@ final class CurlTransfer
     public function read(int $length): string
     {
         while ('' === $this->buffer && !$this->done && !$this->closed) {
-            $this->drive(1.0);
+            $this->drive($this->untilIdleLimit());
         }
         if ('' === $this->buffer) {
             if ($this->done && \CURLE_OK !== $this->result) {
@@ -249,7 +308,10 @@ final class CurlTransfer
         }
         $this->closed = true;
         curl_multi_remove_handle($this->mh, $this->ch);
-        curl_multi_close($this->mh);
+        // Since PHP 8, curl_multi_close() and curl_close() do nothing: the handles (and the connection)
+        // go when the objects do. The callbacks bound to $this make a cycle that only the garbage
+        // collector would break, much later, so drop them now: the connection closes here.
+        unset($this->ch, $this->mh);
         if (null !== $this->sink) {
             fclose($this->sink);
             $this->sink = null;
@@ -281,13 +343,15 @@ final class CurlTransfer
     {
         $code = $this->result;
         $msg = curl_strerror($code) ?? 'unknown error';
-        $detail = curl_error($this->ch);
+        $detail = $this->closed ? '' : curl_error($this->ch);
         $text = '' !== $detail ? $detail : $msg;
         $connect = \in_array($code, [\CURLE_COULDNT_CONNECT, \CURLE_COULDNT_RESOLVE_HOST, \CURLE_COULDNT_RESOLVE_PROXY], true);
         if (\CURLE_OK === $code) {
             $text = 'the connection closed before an answer';
         }
 
-        return new NetworkException($this->request, $text, \CURLE_OPERATION_TIMEDOUT === $code, $connect);
+        $timedOut = \CURLE_OPERATION_TIMEDOUT === $code;
+
+        return new NetworkException($this->request, $text, $timedOut, $connect, null, $this->headersDone, $timedOut ? 'timeout' : null);
     }
 }

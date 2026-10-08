@@ -8,8 +8,10 @@ use Psr\Http\Client\NetworkExceptionInterface;
 use Psr\Http\Message\RequestInterface;
 
 /**
- * No answer: the connection could not be made, broke, or a time limit ran out
- * ({@see $timedOut}). PSR-18's NetworkExceptionInterface.
+ * No answer, or not all of it: the connection could not be made, broke, or a time limit
+ * ran out ({@see $timedOut}, which one: {@see $limit}). {@see $answerBegun} tells a
+ * request that got no answer at all from an answer that broke off after its status and
+ * headers. PSR-18's NetworkExceptionInterface.
  */
 final class NetworkException extends \RuntimeException implements NetworkExceptionInterface
 {
@@ -19,6 +21,10 @@ final class NetworkException extends \RuntimeException implements NetworkExcepti
         public readonly bool $timedOut = false,
         public readonly bool $connectFailed = false,
         ?\Throwable $previous = null,
+        /** The status and headers had arrived: the answer began, then broke off or stalled. */
+        public readonly bool $answerBegun = false,
+        /** The limit that ran out: `responseTimeout`, `idleTimeout` or `timeout` (null: none did). */
+        public readonly ?string $limit = null,
     ) {
         parent::__construct($message, 0, $previous);
     }

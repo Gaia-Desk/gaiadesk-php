@@ -96,7 +96,7 @@ trait Files
             throw new UsageException("the file is $size bytes; the API takes files up to 256 MB (copy larger ones with gaiadesk-cli cp)", ['kind' => 'usage', 'argv' => ['upload']]);
         }
         $path = $this->deskPath($deskId).'/files';
-        $r = $this->t->json(new Call('PUT', $path, query: ['path' => $remote], bytes: $body, size: $size, deskToken: $deskToken, wake: $wake, e2e: ['desk' => $desk, 'op' => 'file_put', 'request' => ['op' => 'file_put', 'path' => $remote, 'size' => $size]], idleTimeout: self::idleFor($wake)));
+        $r = $this->t->json(new Call('PUT', $path, query: ['path' => $remote], bytes: $body, size: $size, deskToken: $deskToken, wake: $wake, e2e: ['desk' => $desk, 'op' => 'file_put', 'request' => ['op' => 'file_put', 'path' => $remote, 'size' => $size]]));
         $r = self::object($r, "PUT $path", 'a copy result');
         if (\is_array($r['failed'] ?? null) && [] !== $r['failed']) {
             throw new OperationFailedException(\count($r['failed']).' file(s) failed to copy', ['exitCode' => 1, 'argv' => ["PUT $path"], 'json' => $r, 'kind' => 'failed', 'desk' => $desk]);
@@ -135,7 +135,7 @@ trait Files
             }
             $written += \strlen($b);
         };
-        [$res, $seal] = $this->t->request(new Call('GET', $path, query: ['path' => $remote], accept: 'application/octet-stream', deskToken: $deskToken, wake: $wake, e2e: ['desk' => $desk, 'op' => 'file_get', 'request' => ['op' => 'file_get', 'path' => $remote]], idleTimeout: self::idleFor($wake), stream: true));
+        [$res, $seal] = $this->t->request(new Call('GET', $path, query: ['path' => $remote], accept: 'application/octet-stream', deskToken: $deskToken, wake: $wake, e2e: ['desk' => $desk, 'op' => 'file_get', 'request' => ['op' => 'file_get', 'path' => $remote]], stream: true));
         $body = $res->getBody();
         try {
             if (null !== $seal) {

@@ -26,6 +26,16 @@ final class Args
         return new UsageException($message, ['kind' => 'usage']);
     }
 
+    /** A network time limit: a positive number of seconds, or null for no limit. */
+    public static function timeLimit(?float $seconds, string $what): ?float
+    {
+        if (null !== $seconds && (!is_finite($seconds) || $seconds <= 0)) {
+            throw self::usage("$what must be a positive number of seconds, or null for no limit (not ".var_export($seconds, true).')');
+        }
+
+        return $seconds;
+    }
+
     /** A desk id: one token, no whitespace, not a flag (the API itself answers 400 `bad_desk_id` for anything but nine digits). */
     public static function desk(mixed $deskId): string
     {

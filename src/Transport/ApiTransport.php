@@ -8,6 +8,7 @@ use GaiaDesk\E2e\Answers;
 use GaiaDesk\E2e\CallerSeal;
 use GaiaDesk\E2e\Crypto;
 use GaiaDesk\E2e\E2eLayer;
+use GaiaDesk\Exception\ConnectionLostException;
 use GaiaDesk\Exception\GaiaDeskException;
 use GaiaDesk\Exception\ProtocolException;
 use GaiaDesk\Exception\UnreachableException;
@@ -33,6 +34,12 @@ use Psr\Http\Message\StreamInterface;
  * requests, seals desk operations end to end (hosted only), retries what is safe to
  * retry, and turns every failure into the typed exception of its error envelope.
  *
+ * No wait on the network is unbounded: an answer must begin within `responseTimeout`
+ * (else {@see UnreachableException}, kind `timeout`), and every read of its body ends
+ * after `idleTimeout` without a byte (else {@see ConnectionLostException}, kind
+ * `timeout`). Neither is retried. With a plain PSR-18 client, that client's own
+ * timeouts govern sending and the wait for the answer.
+ *
  * @internal used by {@see GaiaDesk}
  *
  * @phpstan-import-type Sealed from E2eLayer
@@ -52,6 +59,8 @@ final class ApiTransport
      * @param 'api'|'local'|'lan'                     $transport
      * @param callable(?string): array<string, string> $credentials the credential headers for one request (the call's desk token, when given)
      * @param callable(float): void|null              $sleep
+     * @param float|null                              $responseTimeout seconds an answer may take to begin, sending the request included (null: no limit)
+     * @param float|null                              $idleTimeout     seconds any read of an answer's body may wait for a byte (null: no limit)
      */
     public function __construct(
         public readonly string $transport,
@@ -66,6 +75,8 @@ final class ApiTransport
         private readonly float $connectTimeout = 30.0,
         private readonly ?float $timeout = null,
         ?callable $sleep = null,
+        private readonly ?float $responseTimeout = 960.0,
+        private readonly ?float $idleTimeout = 90.0,
     ) {
         $this->credentials = $credentials(...);
         $this->sleep = null !== $sleep ? $sleep(...) : static function (float $s): void {
@@ -201,16 +212,18 @@ final class ApiTransport
         if (null !== $body) {
             $req = $req->withBody($body);
         }
-        $opts = new RequestOptions($c->timeout ?? ($c->stream ? null : $this->timeout), $c->idleTimeout, $this->connectTimeout, $c->stream);
+        $timeout = $c->timeout ?? ($c->stream ? null : $this->timeout);
+        $opts = new RequestOptions($timeout, $this->idleTimeout, $this->connectTimeout, $c->stream, $this->responseTimeout);
+        $bounded = $this->client instanceof TransportClient;
         try {
             $res = $this->client instanceof TransportClient ? $this->client->sendWith($req, $opts) : $this->client->sendRequest($req);
         } catch (GaiaDeskException $e) {
             // The transport's own typed error (local: no socket; lan: the fingerprint did not match).
             throw [] === $e->getArgv() ? $e->with(['argv' => [$op]]) : $e;
         } catch (ClientExceptionInterface $e) {
-            $timedOut = $e instanceof NetworkException && $e->timedOut;
-            throw new UnreachableException("{$this->where} could not be reached: {$e->getMessage()}", ['kind' => $timedOut ? 'timeout' : 'network', 'reason' => $timedOut ? 'timeout' : 'network', 'exitCode' => 255, 'argv' => [$op]], $e);
+            throw $this->noAnswer($e, $op, $timeout);
         }
+        $res = $res->withBody(new AnswerBody($res->getBody(), $this->where, $op, $this->idleTimeout, $bounded));
         $status = $res->getStatusCode();
         if ($status < 200 || $status >= 300) {
             $seal = $sealed['seal'] ?? null;
@@ -218,6 +231,33 @@ final class ApiTransport
         }
 
         return [$res, $sealed['seal'] ?? null];
+    }
+
+    /** The typed error for a request that got no answer, or not all of it. */
+    private function noAnswer(ClientExceptionInterface $e, string $op, ?float $timeout): GaiaDeskException
+    {
+        $net = $e instanceof NetworkException ? $e : null;
+        $details = ['exitCode' => 255, 'argv' => [$op]];
+        if (null !== $net && $net->answerBegun) {
+            if ($net->timedOut) {
+                $limit = 'timeout' === $net->limit ? 'its time limit ('.AnswerBody::seconds($timeout).', timeout)' : 'nothing for '.AnswerBody::seconds($this->idleTimeout).' (idleTimeout)';
+
+                return new ConnectionLostException("{$this->where} stopped sending its answer to $op: $limit", ['kind' => 'timeout', 'reason' => 'timeout'] + $details, $e);
+            }
+
+            return new ConnectionLostException("the answer to $op broke off: {$e->getMessage()}", ['kind' => 'connection_lost', 'reason' => 'incomplete'] + $details, $e);
+        }
+        if (null !== $net && $net->timedOut) {
+            $within = match ($net->limit) {
+                'responseTimeout' => ' within '.AnswerBody::seconds($this->responseTimeout).' (responseTimeout)',
+                'timeout' => null !== $timeout ? ' within '.AnswerBody::seconds($timeout).' (timeout)' : ' in time',
+                default => ' in time',
+            };
+
+            return new UnreachableException("{$this->where} did not answer $op$within: {$e->getMessage()}", ['kind' => 'timeout', 'reason' => 'timeout'] + $details, $e);
+        }
+
+        return new UnreachableException("{$this->where} could not be reached: {$e->getMessage()}", ['kind' => 'network', 'reason' => 'network'] + $details, $e);
     }
 
     /**
@@ -239,7 +279,7 @@ final class ApiTransport
     public function json(Call $c): mixed
     {
         [$res, $seal] = $this->request($c);
-        $text = (string) $res->getBody();
+        $text = $res->getBody()->getContents(); // not (string): that would hide an answer that broke off
         $json = Json::decode($text, $sentinel = new \stdClass());
         if ($json === $sentinel) {
             throw new ProtocolException("the GaiaDesk API answered {$c->op()} with something that is not JSON", ['kind' => 'protocol', 'argv' => [$c->op()], 'status' => $res->getStatusCode(), 'requestId' => $res->getHeaderLine('X-Request-Id') ?: null, 'body' => substr($text, 0, 4096)]);

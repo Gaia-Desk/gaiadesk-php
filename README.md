@@ -375,9 +375,11 @@ pass `maxRetries: 0` to turn retries off. These are retried:
 - **429** (`rate_limited`, `desk_busy`), for any method, since nothing ran. The SDK waits for the
   `Retry-After` time, but gives up rather than wait more than 60 seconds.
 - `idempotency_key_in_flight`
-- A **network error** on a GET, on any call that has an `idempotencyKey`, or when the connection was
-  never made
+- A **network error** (the connection closed or reset before any answer) on a GET, on any call
+  that has an `idempotencyKey`, or when the connection was never made
 - A **502 or 504 on a GET**
+
+A timeout is never retried, nor is an answer that broke off after it began.
 
 Waits between retries use exponential backoff with jitter. Each retry of a sealed operation is
 sealed afresh. Streams are never retried once their answer has started.
@@ -387,13 +389,38 @@ sealed afresh. Streams are never retried once their answer has started.
 API returns the first answer again, and the SDK will then also retry that call after a network
 error.
 
-**Timeouts:** each operation sets its own limit. A command allows its `timeout` (default 15
-minutes) plus the wake time. Waits allow their timeout. Streams and file transfers have no total
-limit; instead they time out after going two minutes without a single byte, which is enough
-because the API sends a keep-alive every 15 seconds. You can change these:
+**Timeouts** make a server or proxy that stops answering an error, never a hang. Two limits
+apply to every request, on every transport (`api`, `local`, `lan`):
 
-- `timeout:` sets the total limit for every request that is not streamed.
+- `responseTimeout:` (seconds, default 960 = 16 minutes, above the API's 15-minute limit on a
+  call): the longest wait for an answer to begin (its status and headers), sending the request
+  included. Exceeded: `UnreachableException`, kind `timeout`, its message naming
+  `responseTimeout`.
+- `idleTimeout:` (seconds, default 90; the API's streams and held waits send a keep-alive every
+  15 s): the longest silence while reading an answer's body (JSON, a download, an event stream).
+  It limits each wait for more bytes, never the body as a whole: a large download that keeps
+  flowing never times out. Exceeded: `ConnectionLostException`, kind `timeout`; a stream ends
+  with that error in its `StreamExit` (`error['kind']` `connection_lost`, reason `timeout`, exit
+  255).
+- `null` turns either limit off. Zero, a negative number, `INF` or `NAN` is a `UsageException`.
+- A connection closed or reset before any answer is an `UnreachableException` (kind `network`)
+  at once. libcurl itself re-sends a request, body and all, when a connection it **reused** turns
+  out to have been closed before any answer; the SDK's curl client opens a connection per request
+  (and forces a fresh, never-reused one for anything but GET and HEAD, even with a shared
+  connection cache in `curlOptions`), and the LAN and named-pipe client sends one request per
+  connection, so `exec`, uploads, jobs, tokens and wakes go at most once unless the retry rules
+  above allow.
+- A connection that times out is closed, never reused. A download to a file that fails leaves no
+  file behind.
+
+Each operation also sets its own total limit where it has one: a command allows its `timeout`
+(default 15 minutes) plus the wake time, and waits allow their timeout. You can also set:
+
+- `timeout:` the total limit for every request that is not streamed.
 - `connectTimeout:` (default 30 s) limits how long connecting may take.
+
+On the Windows named pipe (the `local` transport there), PHP cannot wait with a limit: reads and
+writes on it block. The pipe is the desk's own app, on the same machine.
 
 ## HTTP clients and streaming
 
@@ -420,8 +447,14 @@ client:
 | Guzzle | Streams only when created with `['stream' => true]`. |
 | Any other client that reads the whole body first | `execStream` and `followJobLogs` still work, but every event arrives together at the end, and downloads are buffered by that client. |
 
-A plain PSR-18 client applies its own timeouts. The SDK's per-request limits only take effect with
-a client that implements `GaiaDesk\Http\TransportClient`.
+A plain PSR-18 client applies its own timeouts to sending the request and waiting for the answer:
+`responseTimeout` and the per-operation limits only take effect with a client that implements
+`GaiaDesk\Http\TransportClient`, so configure yours (Guzzle: `timeout` and `read_timeout`;
+Symfony: `timeout`, which is an idle limit, and `max_duration`). The SDK does bound the reads it
+makes itself: a body handed over as a PHP stream (Guzzle's and `nyholm/psr7`'s streams) is read
+under `idleTimeout`. A body that is not a PHP stream (Symfony's, for one) is read as the client
+gives it, under that client's own limits. Whatever the client throws becomes the SDK's typed
+error.
 
 ## Local and LAN transports
 
@@ -490,7 +523,7 @@ Use `gaiadesk-cli`, or the TypeScript or Python SDK's CLI or native transport, f
 
 ```sh
 composer install
-composer test        # PHPUnit: unit tests, the shared e2e vectors, every endpoint over a mock PSR-18 client, and a real HTTP server (TCP, Unix socket, pinned TLS)
+composer test        # PHPUnit: unit tests, the shared e2e vectors, every endpoint over a mock PSR-18 client, a real HTTP server (TCP, Unix socket, pinned TLS), and a raw TCP server that drops and stalls connections
 composer analyse     # PHPStan: src and examples at level max, tests at level 6
 composer cs          # PHP-CS-Fixer (PER-CS 2.0 + Symfony)
 composer types -- path/to/openapi.json > src/Types.php   # regenerate the result shapes from the API contract
