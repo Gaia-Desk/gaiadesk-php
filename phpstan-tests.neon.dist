@@ -1,0 +1,13 @@
+# The tests and their fakes (decoded JSON everywhere) at level 6; src and examples
+# are analysed at level max (phpstan.neon.dist).
+includes:
+    - vendor/phpstan/phpstan-phpunit/extension.neon
+
+parameters:
+    level: 6
+    phpVersion:
+        min: 80100
+        max: 80499
+    paths:
+        - tests
+    tmpDir: build/phpstan-tests

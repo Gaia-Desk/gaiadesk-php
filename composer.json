@@ -1,0 +1,69 @@
+{
+    "name": "gaiadesk/gaiadesk",
+    "description": "The official GaiaDesk SDK for PHP: drive desks through the hosted GaiaDesk API (exec, streaming output, jobs, files, tokens, stats, fleet, wake, audit, webhooks, support sessions), end-to-end encrypted, or through a desk's own local API and LAN gateway.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["gaiadesk", "remote-desktop", "sdk", "api", "exec", "ai-agents", "end-to-end-encryption"],
+    "homepage": "https://github.com/Gaia-Desk/gaiadesk-php",
+    "support": {
+        "issues": "https://github.com/Gaia-Desk/gaiadesk-php/issues",
+        "source": "https://github.com/Gaia-Desk/gaiadesk-php",
+        "docs": "https://github.com/Gaia-Desk/gaiadesk-php#readme"
+    },
+    "authors": [
+        {
+            "name": "GaiaDesk",
+            "email": "noreply@gaiadesk.net",
+            "homepage": "https://gaiadesk.net"
+        }
+    ],
+    "require": {
+        "php": ">=8.1",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "ext-mbstring": "*",
+        "ext-openssl": "*",
+        "ext-sodium": "*",
+        "nyholm/psr7": "^1.8",
+        "psr/http-client": "^1.0",
+        "psr/http-factory": "^1.0",
+        "psr/http-message": "^1.1 || ^2.0"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "phpstan/phpstan": "^2.0",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "phpunit/phpunit": "^10.5 || ^11.0 || ^12.0"
+    },
+    "suggest": {
+        "guzzlehttp/guzzle": "A PSR-18 client to pass as httpClient (configure 'stream' => true so event streams arrive as they happen)",
+        "symfony/http-client": "A PSR-18 client (Psr18Client) that streams response bodies, to pass as httpClient"
+    },
+    "autoload": {
+        "psr-4": {
+            "GaiaDesk\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "GaiaDesk\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "analyse": [
+            "phpstan analyse --memory-limit=1G",
+            "phpstan analyse -c phpstan-tests.neon.dist --memory-limit=1G"
+        ],
+        "cs": "php-cs-fixer fix --dry-run --diff",
+        "cs-fix": "php-cs-fixer fix",
+        "types": "php tools/gen-types.php",
+        "check": ["@cs", "@analyse", "@test"]
+    },
+    "config": {
+        "sort-packages": true,
+        "platform-check": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

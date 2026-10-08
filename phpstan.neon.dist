@@ -1,0 +1,12 @@
+includes:
+    - vendor/phpstan/phpstan-phpunit/extension.neon
+
+parameters:
+    level: max
+    phpVersion:
+        min: 80100
+        max: 80499
+    paths:
+        - src
+        - examples
+    tmpDir: build/phpstan
