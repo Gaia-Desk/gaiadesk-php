@@ -236,7 +236,7 @@ final class DeskOperationsTest extends ApiTestCase
         $gd->upload("$dir/report.csv", self::OK, 'inbox/');
         self::assertSame(['path' => 'inbox/report.csv'], $this->last()->query, 'a folder keeps the name');
         $d = $gd->download(self::OK, 'inbox/report.csv', "$dir/");
-        self::assertSame(["$dir/report.csv", 8, 'download'], [$d['destination'], $d['bytes'], $d['direction']]);
+        self::assertSame([$dir.\DIRECTORY_SEPARATOR.'report.csv', 8, 'download'], [$d['destination'], $d['bytes'], $d['direction']]);
         self::assertSame("a,b\n1,2\n", file_get_contents("$dir/report.csv"));
         $sink = fopen('php://memory', 'w+b');
         self::assertIsResource($sink);

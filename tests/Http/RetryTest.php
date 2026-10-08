@@ -60,7 +60,8 @@ final class RetryTest extends TestCase
         $gone = RawServer::freePort();
         [$e, $took] = $this->fails(UnreachableException::class, fn () => $this->gd("http://127.0.0.1:$gone/v1", retries: 0)->exec(self::D, 'deploy'));
         self::assertSame(['network', 'network'], [$e->getKind(), $e->getReason()]);
-        self::assertLessThan(1.0, $took);
+        // Windows itself tries a refused loopback connect again for about 2 s before it gives up.
+        self::assertLessThan(\PHP_OS_FAMILY === 'Windows' ? 5.0 : 1.0, $took);
     }
 
     /** @return iterable<string, array{string}> */

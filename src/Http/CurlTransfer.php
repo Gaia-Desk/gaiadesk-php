@@ -79,8 +79,10 @@ final class CurlTransfer
             \CURLOPT_HEADERFUNCTION => $this->onHeader(...),
             \CURLOPT_WRITEFUNCTION => $this->onData(...),
         ];
-        if (\defined('CURLOPT_PROTOCOLS_STR')) {
-            $opts[\CURLOPT_PROTOCOLS_STR] = 'http,https';
+        // CURLOPT_PROTOCOLS_STR exists from PHP 8.3 (libcurl 7.85): read it by name, so older PHP sees no unknown constant.
+        $protocols = \defined('CURLOPT_PROTOCOLS_STR') ? \constant('CURLOPT_PROTOCOLS_STR') : null;
+        if (\is_int($protocols)) {
+            $opts[$protocols] = 'http,https';
         }
         if ('HEAD' === $request->getMethod()) {
             $opts[\CURLOPT_NOBODY] = true;
