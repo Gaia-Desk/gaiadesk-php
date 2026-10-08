@@ -318,13 +318,13 @@ final class DeskOperationsTest extends ApiTestCase
         // A GET on 502: retried; a POST is not.
         $this->api->flaky = 1;
         self::assertSame('studio', $gd->stats(FakeApi::FLAKY)['hostname']);
-        // A network error: a GET is retried, a POST without an idempotency key is not, with one it is.
+        // A network error: a GET is retried, a POST is not, with or without an idempotency key.
         $this->http->failNext = 1;
         $gd->stats(self::OK);
         $this->http->failNext = 1;
         $this->throws(UnreachableException::class, static fn () => $gd->exec(self::OK, 'x'));
         $this->http->failNext = 1;
-        self::assertSame(0, $gd->exec(self::OK, 'x', idempotencyKey: 'k1')['exit']);
+        $this->throws(UnreachableException::class, static fn () => $gd->exec(self::OK, 'x', idempotencyKey: 'k1'));
         // A connection never made: safe for any method.
         $this->http->failNext = 1;
         $this->http->failConnect = true;

@@ -30,6 +30,8 @@ Never hang on a dropped or stalled connection.
   `curl_multi_close()` does nothing, and the transfer's callbacks kept its handles in a cycle only
   the garbage collector broke: failed requests left their sockets open (about four descriptors
   each) until a collection ran.
+- A call with an `idempotencyKey` is no longer re-sent after a network error (closed or reset
+  before any answer): like every SDK, only GETs (and a connection that was never made) are.
 - A plain PSR-18 client's body that is a PHP stream is read under `idleTimeout`.
 - Tests: a raw TCP server (no HTTP framework) that closes or resets before any response byte
   (with and without reading the body), stalls mid-body, mid-JSON and mid-stream, or never

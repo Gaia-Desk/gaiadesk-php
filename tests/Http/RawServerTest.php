@@ -176,6 +176,9 @@ final class RawServerTest extends TestCase
         self::assertSame(2, $s->count('POST'));
         $this->fails(UnreachableException::class, static fn () => $gd->runJob(self::D, 'nightly', 'make'));
         self::assertSame(3, $s->count('POST'));
+        // An idempotency key does not make the SDK resend a call that may have run.
+        $this->fails(UnreachableException::class, static fn () => $gd->exec(self::D, 'deploy', idempotencyKey: 'deploy-1'));
+        self::assertSame(4, $s->count('POST'));
         self::assertSame(0, $s->count('GET'));
     }
 

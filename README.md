@@ -375,8 +375,9 @@ pass `maxRetries: 0` to turn retries off. These are retried:
 - **429** (`rate_limited`, `desk_busy`), for any method, since nothing ran. The SDK waits for the
   `Retry-After` time, but gives up rather than wait more than 60 seconds.
 - `idempotency_key_in_flight`
-- A **network error** (the connection closed or reset before any answer) on a GET, on any call
-  that has an `idempotencyKey`, or when the connection was never made
+- A **network error** (the connection closed or reset before any answer) on a GET,
+  or when the connection was never made (nothing was sent). A call that changes something is
+  never sent again after it may have reached the server, `idempotencyKey` or not
 - A **502 or 504 on a GET**
 
 A timeout is never retried, nor is an answer that broke off after it began.
@@ -386,8 +387,7 @@ sealed afresh. Streams are never retried once their answer has started.
 
 **Idempotency:** `exec`, `runJob`, `createToken`, `wake`, `createWebhook` and
 `createSupportSession` take `idempotencyKey:`. If you retry with the same key within 24 hours, the
-API returns the first answer again, and the SDK will then also retry that call after a network
-error.
+API returns the first answer again (the SDK itself does not resend it after a network error).
 
 **Timeouts** make a server or proxy that stops answering an error, never a hang. Two limits
 apply to every request, on every transport (`api`, `local`, `lan`):

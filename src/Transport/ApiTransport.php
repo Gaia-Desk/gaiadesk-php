@@ -148,7 +148,7 @@ final class ApiTransport
             $prev = $e->getPrevious();
             $neverSent = $prev instanceof NetworkException && $prev->connectFailed;
 
-            return $neverSent || $read || null !== $c->idempotencyKey ? $backoff : null;
+            return $neverSent || $read ? $backoff : null;
         }
         if ($read && !$c->stream && (502 === $status || 504 === $status)) {
             return $backoff;
