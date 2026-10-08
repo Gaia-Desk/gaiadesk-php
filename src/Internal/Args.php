@@ -36,6 +36,16 @@ final class Args
         return $seconds;
     }
 
+    /** A retry delay: a number of seconds, zero or more. */
+    public static function delay(float $seconds, string $what): float
+    {
+        if (!is_finite($seconds) || $seconds < 0) {
+            throw self::usage("$what must be a number of seconds, 0 or more (not ".var_export($seconds, true).')');
+        }
+
+        return $seconds;
+    }
+
     /** A desk id: one token, no whitespace, not a flag (the API itself answers 400 `bad_desk_id` for anything but nine digits). */
     public static function desk(mixed $deskId): string
     {

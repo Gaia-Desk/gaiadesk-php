@@ -369,25 +369,29 @@ try {
 
 ## Retries, timeouts and idempotency
 
-The SDK retries a request only when it is safe to. `maxRetries` (default 2) sets how many times;
-pass `maxRetries: 0` to turn retries off. These are retried:
+**Retries.** A request is sent again only when that cannot run anything twice:
 
-- **429** (`rate_limited`, `desk_busy`), for any method, since nothing ran. The SDK waits for the
-  `Retry-After` time, but gives up rather than wait more than 60 seconds.
-- `idempotency_key_in_flight`
-- A **network error** (the connection closed or reset before any answer) on a GET,
-  or when the connection was never made (nothing was sent). A call that changes something is
-  never sent again after it may have reached the server, `idempotencyKey` or not
-- A **502 or 504 on a GET**
+- **The connection was never made** (DNS, refused, TLS handshake): any method — nothing was sent.
+- **The connection was lost after sending, or the answer was 502, 503 or 504**: GETs only (reads).
+  A 503 that says the API or desk operations are switched off is not retried.
+- **429** (`rate_limited`, `desk_busy`) and **409** `idempotency_key_in_flight`: any method — the server refused
+  it before acting.
 
-A timeout is never retried, nor is an answer that broke off after it began.
+Timeouts are never retried, and nothing is retried once its answer has begun. A call that changes something
+(POST, PUT, DELETE) is never sent again after it may have reached the server; an `Idempotency-Key` is sent but
+does not make a call retryable. 429 and 503 wait for `Retry-After`; one longer than `maxRetryWait:`
+(default 60 s) is not waited for — the error carries it. Otherwise the wait is exponential backoff with jitter:
+`retryBaseDelay:` (default 250 ms) doubling up to `retryMaxDelay:` (default 8 s), times a random 0.5–1.0.
+`maxRetries:` (default 2, so 3 attempts in all) sets how many times; 0 turns retries off. Each retry of
+a sealed operation is sealed afresh.
 
-Waits between retries use exponential backoff with jitter. Each retry of a sealed operation is
-sealed afresh. Streams are never retried once their answer has started.
+libcurl itself re-sends any request, body and all, when a connection it reused was closed before any answer;
+the SDK's curl client never sends anything but a GET or HEAD on a reused connection, so only those can be
+re-sent by the stack.
 
 **Idempotency:** `exec`, `runJob`, `createToken`, `wake`, `createWebhook` and
 `createSupportSession` take `idempotencyKey:`. If you retry with the same key within 24 hours, the
-API returns the first answer again (the SDK itself does not resend it after a network error).
+API returns the first answer again (the SDK itself never resends it after it may have reached the server).
 
 **Timeouts** make a server or proxy that stops answering an error, never a hang. Two limits
 apply to every request, on every transport (`api`, `local`, `lan`):

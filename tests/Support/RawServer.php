@@ -20,9 +20,13 @@ final class RawServer
     public readonly string $url;
     public readonly string $address;
 
-    public function __construct(string $mode)
+    /**
+     * @param int $port    the data port (0: any free one)
+     * @param int $delayMs listen on the data port only after this long (until then, connecting is refused)
+     */
+    public function __construct(string $mode, int $port = 0, int $delayMs = 0)
     {
-        $proc = proc_open([\PHP_BINARY, __DIR__.'/raw-server.php'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $proc = proc_open([\PHP_BINARY, __DIR__.'/raw-server.php', (string) $port, (string) $delayMs], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
         if (!\is_resource($proc)) {
             throw new \RuntimeException('cannot start the raw server');
         }
@@ -52,6 +56,19 @@ final class RawServer
         }
 
         return trim($line);
+    }
+
+    /** A port nothing listens on (bound, then closed). */
+    public static function freePort(): int
+    {
+        $s = stream_socket_server('tcp://127.0.0.1:0');
+        if (false === $s) {
+            throw new \RuntimeException('cannot bind a port');
+        }
+        $port = (int) substr((string) strrchr((string) stream_socket_get_name($s, false), ':'), 1);
+        fclose($s);
+
+        return $port;
     }
 
     /** Switch the mode for the next requests (see raw-server.php). */

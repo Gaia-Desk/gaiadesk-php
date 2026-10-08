@@ -30,8 +30,22 @@ Never hang on a dropped or stalled connection.
   `curl_multi_close()` does nothing, and the transfer's callbacks kept its handles in a cycle only
   the garbage collector broke: failed requests left their sockets open (about four descriptors
   each) until a collection ran.
-- A call with an `idempotencyKey` is no longer re-sent after a network error (closed or reset
-  before any answer): like every SDK, only GETs (and a connection that was never made) are.
+- **Retries: one policy in every GaiaDesk SDK.** A request is sent again only when that cannot
+  run anything twice: a connection never made (any method), a connection lost after sending or a
+  502/503/504 (GETs only), a 429 or a 409 `idempotency_key_in_flight` (any method). Changes:
+  - Now retried: a **503 on a GET** (unless its reason is `api_disabled`, `desk_ops_disabled` or
+    `local_api_off`), waiting for its `Retry-After`; 502/503/504 on a **streamed GET**
+    (`followJobLogs`, downloads) before its answer begins; a connection that **never got made**
+    through a broken TLS handshake (curl, LAN) or because the **local API's socket or pipe** was
+    not there; the 409 retry now needs status 409.
+  - No longer retried: a call with an `idempotencyKey` after a network error (closed or reset before
+    any answer): the key is sent but never unlocks a retry; a LAN connect that **timed out**.
+  - Backoff: 250 ms doubling up to 8 s, times a random 0.5–1.0 (was 0.5 s doubling up to 8 s, times
+    0.75–1.25). New options `retryBaseDelay` (0.25), `retryMaxDelay` (8.0) and `maxRetryWait`
+    (60.0, the longest `Retry-After` waited for; longer: the error at once, carrying it), on
+    `new GaiaDesk(...)`, `GaiaDesk::local()` and `GaiaDesk::lan()`; `maxRetries` stays (default 2).
+  - libcurl re-sends a bodiless DELETE as readily as a PUT on a reused connection: every non-GET
+    goes on a fresh connection (pinned for DELETE, POST and PUT).
 - A plain PSR-18 client's body that is a PHP stream is read under `idleTimeout`.
 - Tests: a raw TCP server (no HTTP framework) that closes or resets before any response byte
   (with and without reading the body), stalls mid-body, mid-JSON and mid-stream, or never

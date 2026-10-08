@@ -345,7 +345,9 @@ final class CurlTransfer
         $msg = curl_strerror($code) ?? 'unknown error';
         $detail = $this->closed ? '' : curl_error($this->ch);
         $text = '' !== $detail ? $detail : $msg;
-        $connect = \in_array($code, [\CURLE_COULDNT_CONNECT, \CURLE_COULDNT_RESOLVE_HOST, \CURLE_COULDNT_RESOLVE_PROXY], true);
+        // The connection was never made (refused, no such host, the TLS handshake broke): nothing was sent.
+        // Not a connect that timed out (CURLE_OPERATION_TIMEDOUT), not a certificate that failed verification.
+        $connect = \in_array($code, [\CURLE_COULDNT_CONNECT, \CURLE_COULDNT_RESOLVE_HOST, \CURLE_COULDNT_RESOLVE_PROXY, \CURLE_SSL_CONNECT_ERROR], true);
         if (\CURLE_OK === $code) {
             $text = 'the connection closed before an answer';
         }

@@ -118,9 +118,18 @@ final class Local
         return $h;
     }
 
-    public static function unavailable(string $path, ?string $why = null): UnreachableException
+    /**
+     * The local API is not there. With the request: no connection was made, so nothing was sent
+     * (the error says so, and the request may be retried).
+     */
+    public static function unavailable(string $path, ?string $why = null, ?RequestInterface $request = null, ?\Throwable $previous = null): UnreachableException
     {
-        return new UnreachableException(self::UNAVAILABLE.' ('.$path.(null !== $why ? ": $why" : '').')', ['kind' => 'unreachable', 'reason' => 'local_api_unavailable', 'exitCode' => 255]);
+        $message = self::UNAVAILABLE.' ('.$path.(null !== $why ? ": $why" : '').')';
+        if (null !== $request && !$previous instanceof NetworkException) {
+            $previous = new NetworkException($request, $why ?? 'no socket or pipe', false, true, $previous);
+        }
+
+        return new UnreachableException($message, ['kind' => 'unreachable', 'reason' => 'local_api_unavailable', 'exitCode' => 255], $previous);
     }
 
     /**
@@ -132,7 +141,7 @@ final class Local
             return new SocketClient(static function (RequestInterface $r, RequestOptions $o) use ($where) {
                 $h = @fopen($where, 'r+b');
                 if (false === $h) {
-                    throw self::unavailable($where, error_get_last()['message'] ?? null);
+                    throw self::unavailable($where, error_get_last()['message'] ?? null, $r);
                 }
 
                 return $h;
@@ -155,13 +164,13 @@ final class Local
             public function sendWith(RequestInterface $request, RequestOptions $options): \Psr\Http\Message\ResponseInterface
             {
                 if (!file_exists($this->socket)) {
-                    throw Local::unavailable($this->socket);
+                    throw Local::unavailable($this->socket, null, $request);
                 }
                 try {
                     return $this->curl->sendWith($request, $options);
                 } catch (NetworkException $e) {
                     if ($e->connectFailed) {
-                        throw Local::unavailable($this->socket, $e->getMessage());
+                        throw Local::unavailable($this->socket, $e->getMessage(), $request, $e);
                     }
                     throw $e;
                 }

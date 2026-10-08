@@ -13,11 +13,11 @@ use GaiaDesk\Http\CurlClient;
 use GaiaDesk\Http\NetworkException;
 use GaiaDesk\Http\RequestOptions;
 use GaiaDesk\Http\SocketClient;
+use GaiaDesk\Tests\Support\BoundedCalls;
 use GaiaDesk\Tests\Support\RawServer;
 use Nyholm\Psr7\Request;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\Stream;
-use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Client\ClientInterface;
@@ -32,12 +32,12 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class RawServerTest extends TestCase
 {
+    use BoundedCalls;
+
     private const D = '123456789';
-    private const BOUND = 10;
 
     /** @var list<RawServer> */
     private array $servers = [];
-    private bool $hung = false;
 
     protected function tearDown(): void
     {
@@ -61,61 +61,8 @@ final class RawServerTest extends TestCase
             maxRetries: $retries,
             responseTimeout: $response,
             idleTimeout: $idle,
-            sleep: static function (float $s): void {
-                usleep(5000);
-            },
+            retryBaseDelay: 0.005,
         );
-    }
-
-    /**
-     * Run $f, failing the test if it takes longer than BOUND seconds (where SIGALRM exists).
-     *
-     * @template T
-     *
-     * @param callable(): T $f
-     *
-     * @return T
-     */
-    private function bounded(callable $f): mixed
-    {
-        if (!\function_exists('pcntl_alarm')) {
-            return $f();
-        }
-        $this->hung = false;
-        pcntl_async_signals(true);
-        pcntl_signal(\SIGALRM, function (): void {
-            $this->hung = true;
-            throw new AssertionFailedError('no answer within '.self::BOUND.' s: the SDK hung');
-        }, false);
-        pcntl_alarm(self::BOUND);
-        try {
-            return $f();
-        } finally {
-            pcntl_alarm(0);
-            pcntl_signal(\SIGALRM, \SIG_DFL);
-            self::assertFalse($this->hung, 'no answer within '.self::BOUND.' s: the SDK hung');
-        }
-    }
-
-    /**
-     * @template E of \Throwable
-     *
-     * @param class-string<E> $class
-     * @param callable(): mixed $f
-     *
-     * @return array{E, float} the error and how long it took
-     */
-    private function fails(string $class, callable $f): array
-    {
-        $t0 = microtime(true);
-        try {
-            $this->bounded($f);
-        } catch (\Throwable $e) {
-            self::assertInstanceOf($class, $e, $e->getMessage());
-
-            return [$e, microtime(true) - $t0];
-        }
-        self::fail("no $class");
     }
 
     /** @return iterable<string, array{string}> */

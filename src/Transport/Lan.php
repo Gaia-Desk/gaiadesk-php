@@ -66,7 +66,10 @@ final class Lan
             $target = 'tls://'.(str_contains($host, ':') ? "[$host]" : $host).':'.$port;
             $conn = @stream_socket_client($target, $errno, $errstr, $o->connectTimeout, \STREAM_CLIENT_CONNECT, $ctx);
             if (false === $conn) {
-                throw new NetworkException($r, "the desk's LAN gateway ($origin) could not be reached: ".('' !== $errstr ? $errstr : "error $errno"), false, true);
+                // Never connected, so nothing was sent; unless connecting timed out (a timeout is never retried).
+                $timedOut = \in_array($errno, [60, 110, 10060], true) || false !== stripos((string) $errstr, 'timed out');
+
+                throw new NetworkException($r, "the desk's LAN gateway ($origin) could not be reached: ".('' !== $errstr ? $errstr : "error $errno"), $timedOut, !$timedOut, null, false, $timedOut ? 'connectTimeout' : null);
             }
             $params = stream_context_get_params($conn);
             $ssl = \is_array($params['options']['ssl'] ?? null) ? $params['options']['ssl'] : [];

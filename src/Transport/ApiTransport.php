@@ -71,7 +71,7 @@ final class ApiTransport
         private readonly StreamFactoryInterface $streams,
         callable $credentials,
         private readonly ?E2eLayer $e2e = null,
-        private readonly int $maxRetries = 2,
+        private readonly Retry $retry = new Retry(),
         private readonly float $connectTimeout = 30.0,
         private readonly ?float $timeout = null,
         ?callable $sleep = null,
@@ -117,44 +117,13 @@ final class ApiTransport
 
                 return $this->e2e->call($e2e['desk'], $e2e['op'], $e2e['request'], ['deskToken' => $c->deskToken, 'wake' => $c->wake], fn (?array $sealed): array => $this->send($c, $sealed));
             } catch (GaiaDeskException $e) {
-                $delay = $this->retryDelay($e, $c, $attempt);
+                $delay = $c->retry ? $this->retry->delay($e, $c->method, $attempt) : null;
                 if (null === $delay) {
                     throw $e;
                 }
                 ($this->sleep)($delay);
             }
         }
-    }
-
-    /** How long to wait before trying again, or null not to. */
-    private function retryDelay(GaiaDeskException $e, Call $c, int $attempt): ?float
-    {
-        if (!$c->retry || $attempt >= $this->maxRetries) {
-            return null;
-        }
-        $backoff = min(8.0, 0.5 * (2 ** $attempt)) * (0.75 + mt_rand() / mt_getrandmax() * 0.5);
-        $status = $e->getStatus();
-        if (429 === $status) {
-            // Over the rate limit, or the desk runs 16 operations: nothing ran. Wait as told.
-            $after = $e->getRetryAfter() ?? $backoff;
-
-            return $after <= 60.0 ? max(0.0, $after) : null;
-        }
-        if ('idempotency_key_in_flight' === $e->getReason()) {
-            return $backoff;
-        }
-        $read = 'GET' === $c->method;
-        if (null === $status && 'network' === $e->getKind()) {
-            $prev = $e->getPrevious();
-            $neverSent = $prev instanceof NetworkException && $prev->connectFailed;
-
-            return $neverSent || $read ? $backoff : null;
-        }
-        if ($read && !$c->stream && (502 === $status || 504 === $status)) {
-            return $backoff;
-        }
-
-        return null;
     }
 
     /**
