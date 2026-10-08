@@ -53,7 +53,7 @@ function phpType(array $s, array $schemas, int $depth = 0): string
                 $p = flatten($p, $schemas);
             }
             foreach ($p['properties'] ?? [] as $k => $v) {
-                $props[$k] = isset($props[$k]) && !isset($v['$ref']) && !isset($v['type']) && !isset($v['oneOf']) ? $props[$k] : $v;
+                $props[$k] = isset($props[$k]) ? narrow($props[$k], $v) : $v;
             }
             $required = array_merge($required, $p['required'] ?? []);
         }
@@ -87,6 +87,28 @@ function phpType(array $s, array $schemas, int $depth = 0): string
         'object' => isset($s['properties']) ? shape($s['properties'], $s['required'] ?? [], $schemas, $depth) : 'array<string, '.(is_array($s['additionalProperties'] ?? null) ? phpType($s['additionalProperties'], $schemas, $depth) : 'mixed').'>',
         default => isset($s['properties']) ? shape($s['properties'], $s['required'] ?? [], $schemas, $depth) : 'mixed',
     };
+}
+
+/**
+ * A property as a later allOf part restates it: a new type replaces it, a const or enum
+ * narrows it (`admin: const false`), and so do an array's narrowed items; a part that
+ * only describes it leaves it as it was.
+ *
+ * @param array<string, mixed> $base
+ * @param array<string, mixed> $over
+ *
+ * @return array<string, mixed>
+ */
+function narrow(array $base, array $over): array
+{
+    if (isset($over['$ref']) || isset($over['type']) || isset($over['oneOf']) || array_key_exists('const', $over) || isset($over['enum'])) {
+        return $over;
+    }
+    if (isset($over['items']) && is_array($over['items'])) {
+        $base['items'] = narrow(is_array($base['items'] ?? null) ? $base['items'] : [], $over['items']);
+    }
+
+    return $base;
 }
 
 /** @param array<string, mixed> $s */

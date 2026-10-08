@@ -30,8 +30,8 @@ trait Tokens
      * @param string|array<mixed> $desks   one desk id, or several (one token each, under one name)
      * @param string              $name    the token's name
      * @param int|string          $expires seconds, or `30m`, `24h`, `7d`, `2w` (default 7 days)
-     * @param array<mixed>        $scopes  any of `exec`, `shell`, `cp`, `forward`, `jobs`, `screen`, `admin` (default exec, cp, jobs);
-     *                                     `admin` lets it ASK to run as administrator: the desk owner's Admin access still decides
+     * @param array<mixed>        $scopes  any of `exec`, `shell`, `cp`, `forward`, `jobs`, `screen` (default exec, cp, jobs); the API refuses
+     *                                     the `admin` scope (`admin_not_via_api`): mint that one with gaiadesk-cli
      * @param string|null         $cwd     confine its work to this directory on the desk
      * @param bool                $lowPriv run its work as the desk's low-privilege agent user, or refuse
      *
@@ -58,9 +58,6 @@ trait Tokens
         $scopes = Args::stringList($scopes, 'scopes');
         if ([] === $scopes || \in_array('', $scopes, true)) {
             throw Args::usage('scopes must be a non-empty list of scopes');
-        }
-        if (\in_array('admin', $scopes, true) && (null !== $cwd || $lowPriv)) {
-            throw Args::usage('a token with the admin scope cannot be confined (cwd, lowPriv): a confined token never runs as administrator');
         }
         $spec = ['name' => $name, 'expires_secs' => Args::seconds($expires, 'expires'), 'scopes' => $scopes];
         if (null !== $cwd) {

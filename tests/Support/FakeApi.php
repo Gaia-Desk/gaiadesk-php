@@ -520,11 +520,9 @@ final class FakeApi
                 if ('refuse' === $cmd) {
                     return [['event' => 'error', 'kind' => 'refused', 'reason' => 'token_refused', 'message' => "this token (bot) has no exec scope on desk $desk"]];
                 }
-                if (true === ($spec['admin'] ?? false)) {
-                    $reason = 'whoami' === $cmd ? null : $cmd;
-                    if (null !== $reason) {
-                        return [$exit(['desk' => $desk, 'exit' => 254, 'remote_code' => null, 'duration_ms' => 1, 'notes' => [], 'stdout' => '', 'stderr' => '', 'timed_out' => false, 'truncated' => false, 'error' => ['kind' => 'refused', 'reason' => $reason, 'message' => "admin refused: $reason", 'desk' => $desk]])];
-                    }
+                if (true === ($spec['admin'] ?? false) || 'admin_not_via_api' === $cmd) {
+                    // Administrator work is never run through the API: refused before anything is asked or run.
+                    return [$exit(['desk' => $desk, 'exit' => 254, 'remote_code' => null, 'duration_ms' => 1, 'notes' => [], 'stdout' => '', 'stderr' => '', 'timed_out' => false, 'truncated' => false, 'error' => ['kind' => 'refused', 'reason' => 'admin_not_via_api', 'message' => 'administrator work is not available over the API: use gaiadesk-cli exec --admin', 'desk' => $desk]])];
                 }
                 $text = "ran: $cmd é\n";
                 foreach ((array) ($spec['env'] ?? []) as $k => $v) {
@@ -532,9 +530,6 @@ final class FakeApi
                 }
                 if (\is_string($spec['stdin'] ?? null)) {
                     $text .= "stdin: {$spec['stdin']}\n";
-                }
-                if (true === ($spec['admin'] ?? false)) {
-                    $text .= "as: root\n";
                 }
                 $code = 'fail' === $cmd ? 3 : 0;
                 $result = ['desk' => $desk, 'exit' => $code, 'remote_code' => $code, 'duration_ms' => 7, 'notes' => [], 'stdout' => $text, 'stderr' => "warn\n", 'timed_out' => false, 'truncated' => false, 'error' => null, 'mode' => 'pipes', 'route' => 'the GaiaDesk server', 'shell' => $spec['shell'] ?? null];
@@ -614,6 +609,10 @@ final class FakeApi
 
                 return $ev;
             case 'token_mint':
+                if (\in_array('admin', (array) ($req['spec']['scopes'] ?? []), true)) {
+                    return [['event' => 'error', 'kind' => 'refused', 'reason' => 'admin_not_via_api', 'message' => 'a token with the admin scope is not minted over the API: use gaiadesk-cli']];
+                }
+
                 return [$exit(['tokens' => [['desk' => $desk, 'token' => ['id' => 'tok1', 'label' => $req['spec']['name'], 'scopes' => $req['spec']['scopes'], 'issued_at_ms' => 1, 'expires_at_ms' => 2], 'secret' => 'gdagt_minted_secret']]])];
             case 'token_list':
                 return [$exit(['tokens' => [['id' => 'tok1', 'label' => 'bot', 'issued_at_ms' => 1, 'expires_at_ms' => 2]]])];

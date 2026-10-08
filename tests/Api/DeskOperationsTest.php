@@ -90,19 +90,25 @@ final class DeskOperationsTest extends ApiTestCase
         self::assertMatchesRegularExpression('/^req_[0-9a-f]{24}$/', (string) $e->getRequestId());
     }
 
-    public function testAdminExec(): void
+    /**
+     * Administrator work is not available over the API: the SDK cannot ask for it, and the
+     * API's refusal (`admin_not_via_api`) is a RefusedException wherever it comes from.
+     */
+    public function testAdminNotViaApi(): void
     {
-        $gd = $this->gd();
-        $r = $gd->exec(self::OK, 'whoami', admin: true);
-        self::assertTrue($this->body()['admin']);
-        self::assertStringContainsString('as: root', $r['stdout']);
-        foreach (['admin_not_enabled', 'admin_denied', 'admin_scope_missing', 'admin_unavailable'] as $reason) {
-            // A refusal answers 200 with exit 254 and error.reason: the command never ran.
-            $e = $this->throws(RefusedException::class, static fn () => $gd->exec(self::OK, $reason, admin: true));
-            self::assertSame([$reason, 254, 'refused', null], [$e->getReason(), $e->getExitCode(), $e->getKind(), $e->getStatus()]);
-        }
-        $gd->exec(self::OK, 'x');
-        self::assertArrayNotHasKey('admin', $this->body(), 'admin only when asked');
+        $gd = $this->gd(['e2e' => 'off']);
+        // exec: 200 with exit 254 and error.reason; the command never ran.
+        $e = $this->throws(RefusedException::class, static fn () => $gd->exec(self::OK, 'admin_not_via_api'));
+        self::assertSame(['refused', 'admin_not_via_api', 254, null, self::OK], [$e->getKind(), $e->getReason(), $e->getExitCode(), $e->getStatus(), $e->getDesk()]);
+        self::assertArrayNotHasKey('admin', $this->body(), 'the SDK never sends admin');
+        // A stream ends with the refusal as its exit.
+        $exit = $gd->execStream(self::OK, 'admin_not_via_api')->wait();
+        self::assertSame([254, 'refused', 'admin_not_via_api'], [$exit->exitCode, $exit->error['kind'] ?? null, $exit->error['reason'] ?? null]);
+        // Minting a token with the admin scope: 403.
+        $owner = $this->gd(['apiKey' => 'session-person', 'deskToken' => null, 'e2e' => 'off']);
+        $e = $this->throws(RefusedException::class, static fn () => $owner->createToken(self::OK, 'admin-bot', scopes: ['exec', 'admin']));
+        self::assertSame(['refused', 'admin_not_via_api', 403, 254], [$e->getKind(), $e->getReason(), $e->getStatus(), $e->getExitCode()]);
+        self::assertNotContains('admin', GaiaDesk::TOKEN_SCOPES);
     }
 
     public function testExecStream(): void
@@ -260,9 +266,6 @@ final class DeskOperationsTest extends ApiTestCase
         $m = $owner->createToken(self::OK, 'bot', expires: '24h', cwd: '/srv', lowPriv: true);
         self::assertSame(['name' => 'bot', 'expires_secs' => 86400, 'scopes' => ['exec', 'cp', 'jobs'], 'cwd' => '/srv', 'low_priv' => true], $this->body());
         self::assertSame('gdagt_minted_secret', $m['tokens'][0]['secret']);
-        $owner->createToken(self::OK, 'admin-bot', scopes: ['exec', 'admin']);
-        self::assertSame(['exec', 'admin'], $this->body()['scopes'], 'admin only when named');
-        $this->throws(UsageException::class, static fn () => $owner->createToken(self::OK, 'x', scopes: ['admin'], cwd: '/srv'));
         $this->throws(UsageException::class, static fn () => $owner->createToken(self::OK, 'x', scopes: []));
         $this->throws(UsageException::class, static fn () => $owner->createToken([], 'x'));
         self::assertSame('tok1', $owner->listTokens(self::OK)[0]['id']);

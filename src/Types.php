@@ -26,7 +26,9 @@ namespace GaiaDesk;
  * @phpstan-type ApiE2eStreamEvent array{ciphertext: string, event: 'sealed', nonce: string, seq: int}
  * @phpstan-type ApiError array{desk?: string|null, kind: ErrorKind, message: string, reason?: string|null, request_id: string, status?: int}
  * @phpstan-type ApiErrorEnvelope array{e2e?: ApiE2eEvents, error: ApiError}
+ * @phpstan-type ApiExecSpec array{admin?: false, argv?: list<string>, command?: string|null, cwd?: string|null, env?: array<string, string>, shell?: Shell, stdin?: string|null, timeout_secs?: int|float|null}
  * @phpstan-type ApiJobFinishedEvent array{created: int, data: array{desk: array{desk_id: string, owner: string}, job: Job}, id: string, type: 'job.finished'}
+ * @phpstan-type ApiMintSpec array{cwd?: string|null, expires_secs: int, low_priv?: bool, name: string, scopes: list<'exec'|'shell'|'cp'|'forward'|'jobs'|'screen'>}
  * @phpstan-type ApiReachEvent array{at: int, detail?: string|null, online: bool, reason: string, reason_text: string, version?: string|null}
  * @phpstan-type ApiReachLog array{desk_id: string, events: list<ApiReachEvent>, since: int}
  * @phpstan-type ApiSupportCustomer array<string, string|int|float|bool|null>

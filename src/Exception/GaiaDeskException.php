@@ -74,7 +74,7 @@ class GaiaDeskException extends \RuntimeException
         return $this->kind;
     }
 
-    /** The finer cause (`unknown_desk`, `rate_limited`, `desk_busy`, `e2e_required`, `admin_denied`, ...), or null. */
+    /** The finer cause (`unknown_desk`, `rate_limited`, `desk_busy`, `e2e_required`, `admin_not_via_api`, ...), or null. */
     public function getReason(): ?string
     {
         return $this->reason;

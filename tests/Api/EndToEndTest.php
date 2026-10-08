@@ -139,12 +139,10 @@ final class EndToEndTest extends ApiTestCase
         self::assertSame($n, \count(array_filter($this->api->requests, static fn ($q) => 'GET' === $q->method && '/v1/desks/111111111' === $q->path)), 'the key is cached');
     }
 
-    public function testAdminExecSealed(): void
+    public function testAdminNotViaApiSealed(): void
     {
-        $r = $this->same(static fn (GaiaDesk $g) => $g->exec(self::SEALED, 'whoami', admin: true));
-        self::assertStringContainsString('as: root', $r['stdout']);
-        $e = $this->sameError(static fn (GaiaDesk $g) => $g->exec(self::SEALED, 'admin_denied', admin: true));
-        self::assertSame([RefusedException::class, 'admin_denied', 254], [$e['class'], $e['reason'], $e['exit']]);
+        $e = $this->sameError(static fn (GaiaDesk $g) => $g->exec(self::SEALED, 'admin_not_via_api'));
+        self::assertSame([RefusedException::class, 'admin_not_via_api', 254], [$e['class'], $e['reason'], $e['exit']]);
     }
 
     public function testExecStreamSealed(): void

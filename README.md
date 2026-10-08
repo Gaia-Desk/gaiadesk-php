@@ -25,7 +25,7 @@ echo $r['stdout'];
 
 - [Install](#install)
 - [Credentials](#credentials)
-- [Commands](#commands): `exec`, `execStream`, administrator commands
+- [Commands](#commands): `exec`, `execStream`
 - [Background jobs](#background-jobs): `runJob`, `jobs`, `jobLogs`, `followJobLogs`, `waitJob`, `killJob`
 - [Files](#files): `upload`, `uploadFrom`, `download`, `downloadTo`, `downloadBytes`
 - [Stats](#stats)
@@ -92,7 +92,9 @@ $r['stdout'];     // and stderr, timed_out, truncated (output over 8 MB), durati
 - A command that **ran** returns its result whatever its exit code. With `check: true`, a non-zero
   exit or a timeout throws `CommandException`, which carries the whole result in `getResult()`.
 - A command the desk **would not start** is thrown as its typed exception. The usual cases are a
-  refused token, a path outside a confined token's folder, and administrator refusals.
+  refused token and a path outside a confined token's folder.
+- Administrator work (root / SYSTEM) is only available through `gaiadesk-cli exec --admin`, not
+  the API: the API refuses it with `admin_not_via_api`.
 
 ### Streaming output
 
@@ -115,28 +117,6 @@ $exit = $s->wait();                      // GaiaDesk\Stream\StreamExit: ->exitCo
 - **stdin** is text you pass up front (`stdin: '…'`). The HTTP API cannot take input while the
   command runs, so `$s->write()` throws a `UsageException`. Use `gaiadesk-cli` for interactive
   input.
-
-### As administrator
-
-`admin: true` runs the command as **root** (macOS, Linux) or **SYSTEM** (Windows), inside the desk's
-privileged GaiaDesk process. Two things must both be true:
-
-- The agent token was minted with the `admin` scope. That scope is never implied, so you have to
-  name it.
-- The desk owner has turned on **Admin access** at the desk itself. Turning it on needs the
-  computer's administrator password, and no API call can do it.
-
-In its default mode the desk asks the person sitting at it each time. A refusal is a
-`RefusedException` with exit code 254, and `getReason()` is one of `admin_scope_missing`,
-`admin_not_enabled`, `admin_denied` or `admin_unavailable`.
-
-```php
-try {
-    echo $gd->exec($desk, 'id', admin: true)['stdout'];
-} catch (GaiaDesk\Exception\RefusedException $e) {
-    echo "not as administrator: {$e->getReason()}\n";
-}
-```
 
 ## Background jobs
 
@@ -195,9 +175,8 @@ $owner->revokeToken('123456789', 'ci-bot');   // by id or name
 
 - With several desks, the SDK mints one token per desk. If a later desk fails, the exception's
   `getJson()['tokens']` holds the tokens already minted, so their secrets are not lost.
-- Scopes are any of `exec`, `shell`, `cp`, `forward`, `jobs`, `screen` and `admin`. The default is
-  `exec`, `cp`, `jobs`. `admin` is never implied, and a confined token (`cwd:` or `lowPriv:`) cannot
-  carry it.
+- Scopes are any of `exec`, `shell`, `cp`, `forward`, `jobs` and `screen`. The default is
+  `exec`, `cp`, `jobs`. The API refuses the `admin` scope (`RefusedException`, `admin_not_via_api`).
 
 ## Fleet
 
@@ -331,7 +310,7 @@ Every failure is a `GaiaDesk\Exception\GaiaDeskException`, and the API's error e
 | Class | `kind` | HTTP | Typical `reason` |
 |---|---|---|---|
 | `UsageException` | `usage` | 400 | `bad_body`, `idempotency_key_reused`; also thrown by the SDK itself before anything is sent |
-| `RefusedException` | `refused` | 401, 403, 429 | `unauthenticated`, `missing_scope`, `desk_token_required`, `rate_limited`, `desk_busy`, `desk_opted_out`, `e2e_required`, `admin_*` |
+| `RefusedException` | `refused` | 401, 403, 429 | `unauthenticated`, `missing_scope`, `desk_token_required`, `rate_limited`, `desk_busy`, `desk_opted_out`, `e2e_required`, `admin_not_via_api` |
 | `E2eException` (a `RefusedException`) | `refused` | none (not sent) | `e2e_unavailable`, `e2e_key_mismatch` |
 | `UnreachableException` | `unreachable`, or finer: `offline`, `unknown_desk`, `network`, `timeout` | 404, 409, 503, 504 | `unknown_desk`, `offline`, `silent`, `no_wake_path`, `network`, `local_api_unavailable` |
 | `FingerprintMismatchException` (an `UnreachableException`) | `unreachable` | none (not sent) | `fingerprint_mismatch` |
@@ -345,7 +324,7 @@ Every exception carries the same details:
 | Method | What it returns |
 |---|---|
 | `getKind()` | The finest kind known. For example `offline` stays `offline`. |
-| `getReason()` | The finer cause, such as `rate_limited` or `admin_denied`. |
+| `getReason()` | The finer cause, such as `rate_limited` or `desk_busy`. |
 | `getDesk()` | The desk the error concerns. |
 | `getStatus()` | The HTTP status. |
 | `getRequestId()` | `req_…`; quote it to support. |

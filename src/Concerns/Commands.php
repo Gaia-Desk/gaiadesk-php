@@ -32,7 +32,7 @@ trait Commands
      *
      * @return array<string, mixed>
      */
-    private static function execSpec(string|array $command, ?string $shell, int|float|string|null $timeout, ?string $cwd, ?string $stdin, ?array $env, bool $admin): array
+    private static function execSpec(string|array $command, ?string $shell, int|float|string|null $timeout, ?string $cwd, ?string $stdin, ?array $env): array
     {
         $argv = Args::command($command);
         $spec = \is_string($command) ? ['command' => $command] : ['argv' => $argv];
@@ -51,9 +51,6 @@ trait Commands
         if (null !== $stdin) {
             $spec['stdin'] = Utf8Decoder::scrub($stdin);
         }
-        if ($admin) {
-            $spec['admin'] = true;
-        }
 
         return $spec;
     }
@@ -63,9 +60,10 @@ trait Commands
      * `gaiadesk-cli exec --json`.
      *
      * A command that ran answers whatever its exit code (`exit`, `stdout`, `stderr`,
-     * `timed_out`, …); one that never ran (refused by the desk, a confined token's folder,
-     * an admin request refused, …) is thrown as its typed exception. With `$check`, a
-     * non-zero exit (or a timeout) is a {@see CommandException}.
+     * `timed_out`, …); one that never ran (refused by the desk, outside a confined token's
+     * folder, …) is thrown as its typed exception. With `$check`, a non-zero exit (or a
+     * timeout) is a {@see CommandException}. Administrator work (root / SYSTEM) is not
+     * available over the API: run it with `gaiadesk-cli exec --admin`.
      *
      * @param string                     $deskId         the desk's nine-digit id
      * @param string|list<string>        $command        a string is ONE command line for the desk's shell, verbatim; a list is
@@ -76,12 +74,9 @@ trait Commands
      * @param string|null                $stdin          text written to its stdin, then closed (the API takes text)
      * @param array<string, string>|null $env            environment variables for the command (never logged by the desk)
      * @param bool                       $check          throw a CommandException when it exits non-zero or times out
-     * @param bool                       $admin          run it as administrator (root / SYSTEM): needs an agent token with the `admin` scope and
-     *                                                   the desk owner's Admin access; else refused (`admin_scope_missing`, `admin_not_enabled`,
-     *                                                   `admin_denied`, `admin_unavailable`)
      * @param string|null                $deskToken      the agent token for this call (instead of the client's)
      * @param int|null                   $wake           if the desk is asleep, ring it and wait up to this many seconds (0-120; the API's default 60)
-     * @param string|null                $idempotencyKey a retry with the same key within 24 hours gets the first answer again (and is retried on network errors)
+     * @param string|null                $idempotencyKey a retry with the same key within 24 hours gets the first answer again (the SDK itself never resends it)
      *
      * @return ExecResult
      */
@@ -94,12 +89,11 @@ trait Commands
         ?string $stdin = null,
         ?array $env = null,
         bool $check = false,
-        bool $admin = false,
         ?string $deskToken = null,
         ?int $wake = null,
         ?string $idempotencyKey = null,
     ): array {
-        $spec = self::execSpec($command, $shell, $timeout, $cwd, $stdin, $env, $admin);
+        $spec = self::execSpec($command, $shell, $timeout, $cwd, $stdin, $env);
         $desk = Args::desk($deskId);
         $path = $this->deskPath($deskId).'/exec';
         $op = "POST $path";
@@ -144,11 +138,10 @@ trait Commands
         ?string $cwd = null,
         ?string $stdin = null,
         ?array $env = null,
-        bool $admin = false,
         ?string $deskToken = null,
         ?int $wake = null,
     ): OutputStream {
-        $spec = self::execSpec($command, $shell, $timeout, $cwd, $stdin, $env, $admin);
+        $spec = self::execSpec($command, $shell, $timeout, $cwd, $stdin, $env);
         $desk = Args::desk($deskId);
         $path = $this->deskPath($deskId).'/exec';
         $c = new Call('POST', $path, query: ['stream' => 1], json: $spec, accept: 'text/event-stream', deskToken: $deskToken, wake: $wake, e2e: ['desk' => $desk, 'op' => 'exec', 'request' => ['op' => 'exec', 'spec' => $spec, 'stream' => true]], stream: true);

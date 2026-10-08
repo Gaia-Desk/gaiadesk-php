@@ -53,7 +53,7 @@ final class GaiaDesk
     use Concerns\Tokens;
 
     /** This SDK's version. */
-    public const VERSION = '0.1.1';
+    public const VERSION = '0.1.2';
     /** The default {@see __construct()} `responseTimeout`: 16 minutes, above the API's 15-minute limit on a call. */
     public const DEFAULT_RESPONSE_TIMEOUT = 960.0;
     /** The default {@see __construct()} `idleTimeout`: the API's streams and held waits send a keep-alive every 15 s. */
@@ -63,8 +63,8 @@ final class GaiaDesk
     public const API_FILE_LIMIT = 268435456;
     /** The longest one `GET …/jobs/{name}/wait` is held, in seconds (the API's `timeout` maximum). */
     public const API_WAIT_MAX = 870;
-    /** The scopes an agent token may carry ({@see createToken()}). `admin` is never implied: name it. */
-    public const TOKEN_SCOPES = ['exec', 'shell', 'cp', 'forward', 'jobs', 'screen', 'admin'];
+    /** The scopes an agent token minted over the API may carry ({@see createToken()}). */
+    public const TOKEN_SCOPES = ['exec', 'shell', 'cp', 'forward', 'jobs', 'screen'];
     /** The events a webhook may subscribe to ({@see createWebhook()}). */
     public const WEBHOOK_EVENTS = ['desk.online', 'desk.offline', 'desk.woke', 'job.finished', 'support.session.joined', 'support.session.ended'];
 

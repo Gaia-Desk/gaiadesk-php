@@ -2,6 +2,23 @@
 
 All notable changes to this package. It follows [Semantic Versioning](https://semver.org).
 
+## 0.1.2
+
+**Breaking: administrator work is not available over any API.** The hosted API, a desk's local API
+and its LAN gateway refuse it with `admin_not_via_api`; run it with `gaiadesk-cli exec --admin`.
+
+- Removed: `exec(..., admin:)` and `execStream(..., admin:)`, the `admin` scope from
+  `GaiaDesk::TOKEN_SCOPES` (and the SDK's check that a confined token cannot carry it), the
+  `admin_*` refusal reasons in the docs (`admin_scope_missing`, `admin_not_enabled`,
+  `admin_denied`, `admin_unavailable`) and `examples/admin.php`. No aliases.
+- `admin_not_via_api` is a `RefusedException` (kind `refused`, exit 254): from `exec` (200 with
+  exit 254), as a stream's exit, and from `createToken` with the `admin` scope (403).
+- Types: `ApiExecSpec` (no administrator work) and `ApiMintSpec` (no `admin` scope), regenerated
+  from the API contract; `tools/gen-types.php` now applies a narrowing `allOf` part (a `const`,
+  an `enum`, an array's items).
+- Fixed: static analysis on PHP 8.1 and 8.2 (`CURLOPT_PROTOCOLS_STR`, from PHP 8.3, is now read
+  by name). Tests: Windows path separators and Windows' slower refusal of a loopback connect.
+
 ## 0.1.1
 
 Never hang on a dropped or stalled connection.
