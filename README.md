@@ -1,9 +1,14 @@
 # GaiaDesk SDK for PHP
 
-The official PHP SDK for the [GaiaDesk](https://gaiadesk.net) API. Use it to run commands on your
-desks, stream their output, run background jobs, move files, mint scoped agent tokens and read
-desk stats. It also covers the fleet (listing desks, reachability, wake), the audit trail, webhooks
-and support sessions. Desk operations are **end-to-end encrypted** whenever the desk publishes a
+[![CI](https://github.com/Gaia-Desk/gaiadesk-php/actions/workflows/ci.yml/badge.svg)](https://github.com/Gaia-Desk/gaiadesk-php/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/Gaia-Desk/gaiadesk-php)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/Gaia-Desk/gaiadesk-php)](https://github.com/Gaia-Desk/gaiadesk-php/releases/latest)
+
+The official PHP SDK and client library for the [GaiaDesk](https://gaiadesk.net) remote desktop
+Platform API, for remote access automation from PHP apps, scripts, CI and AI agents. Use it to run
+commands on remote computers (your desks), stream their output, run background jobs, transfer files,
+mint scoped agent tokens and read desk stats. It also covers the fleet (listing desks, reachability,
+wake), the audit trail, webhooks and support sessions. Desk operations are **end-to-end encrypted** whenever the desk publishes a
 key: the hosted API relays only ciphertext.
 
 ```php
@@ -41,12 +46,20 @@ echo $r['stdout'];
 - [Local and LAN transports](#local-and-lan-transports)
 - [Coverage of the API](#coverage-of-the-api)
 - [Development](#development)
+- [Links](#links)
 
 ## Install
 
+The package is not on Packagist yet. Add this repository as a Composer VCS repository, then require
+a release tag:
+
 ```sh
-composer require gaiadesk/gaiadesk
+composer config repositories.gaiadesk vcs https://github.com/Gaia-Desk/gaiadesk-php
+composer require gaiadesk/gaiadesk:^0.1.2
 ```
+
+Once published to Packagist, `composer require gaiadesk/gaiadesk` alone is enough (and the
+`repositories` entry can go).
 
 ## Credentials
 
@@ -511,3 +524,21 @@ composer analyse     # PHPStan: src and examples at level max, tests at level 6
 composer cs          # PHP-CS-Fixer (PER-CS 2.0 + Symfony)
 composer types -- path/to/openapi.json > src/Types.php   # regenerate the result shapes from the API contract
 ```
+
+## Links
+
+- Package: `gaiadesk/gaiadesk` on Packagist once published; until then, require it from this
+  repository's [release tags](https://github.com/Gaia-Desk/gaiadesk-php/tags) as above
+- Documentation: [Getting started](https://gaiadesk.net/docs/getting-started),
+  [The CLI for scripts and AI agents](https://gaiadesk.net/docs/cli-for-agents),
+  [Agent access](https://gaiadesk.net/docs/agent-access),
+  [Embedding GaiaDesk](https://gaiadesk.net/docs/embedding-gaiadesk) (support sessions),
+  [Security](https://gaiadesk.net/docs/security)
+- GaiaDesk SDKs: [TypeScript](https://github.com/Gaia-Desk/gaiadesk-typescript),
+  [Python](https://github.com/Gaia-Desk/gaiadesk-python), [Go](https://github.com/Gaia-Desk/gaiadesk-go),
+  [Java and Kotlin](https://github.com/Gaia-Desk/gaiadesk-java), [.NET](https://github.com/Gaia-Desk/gaiadesk-dotnet),
+  [Ruby](https://github.com/Gaia-Desk/gaiadesk-ruby), PHP (this one), [Rust](https://github.com/Gaia-Desk/gaiadesk-rust);
+  the [MCP server](https://github.com/Gaia-Desk/gaiadesk-mcp) for AI assistants; the
+  [command line](https://github.com/Gaia-Desk/gaiadesk-cli), `gaiadesk-cli`
+- [Changelog](CHANGELOG.md) and [releases](https://github.com/Gaia-Desk/gaiadesk-php/releases)
+- [Security policy](https://github.com/Gaia-Desk/gaiadesk-php/security/policy)
